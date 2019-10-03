@@ -109,3 +109,51 @@ object show {
   val intAsString: String = showInt.show(1912)
   val stringAsString: String = showString.show("abc")
 }
+
+object CatShow {
+  final case class Cat(name: String, age: Int, color: String)
+
+  import cats.instances.int._
+  import cats.instances.string._
+  import cats.syntax.show.toShow
+
+  implicit val showCat: Show[Cat] = Show.show[Cat] { cat =>
+    s"${cat.name.show} is a ${cat.age.show} year-old ${cat.color.show} cat"
+  }
+
+  // interface object
+  val myCat = Cat("mycat", 3, "red")
+  showCat.show(myCat)
+
+  // interface syntax
+  myCat.show
+}
+
+// 1.5.2
+object ComparingInts {
+  import cats.Eq
+  // IntOrder extends Order which extends PartialOrder which extends Eq
+  import cats.instances.int.catsKernelStdOrderForInt
+
+  // type class instance accessing implicit catsKernelStdOrderForInt
+  val eqInt: Eq[Int] = Eq[Int]
+  eqInt.eqv(123, 123)
+
+  import cats.syntax.eq.catsSyntaxEq // for === and =!=
+  123 === 123
+  123 =!= 234
+  // 123 === "123" - compiler error
+}
+
+object ComparingOption {
+  import cats.instances.int.catsKernelStdOrderForInt
+  import cats.instances.option.catsKernelStdOrderForOption
+  import cats.syntax.eq.catsSyntaxEq
+
+  // Some(1) === None
+  (Some(1): Option[Int]) === (None: Option[Int])
+  Option(1) === Option.empty[Int] // == none
+
+  import cats.syntax.option._
+  1.some === none[Int] // TODO: try to expand this
+}
