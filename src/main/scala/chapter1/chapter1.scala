@@ -142,6 +142,9 @@ object ComparingInts {
   import cats.syntax.eq.catsSyntaxEq // for === and =!=
   123 === 123
   123 =!= 234
+  // the above expressed without 'implicit's
+  catsSyntaxEq(123)(catsKernelStdOrderForInt).===(123)
+
   // 123 === "123" - compiler error
 }
 
@@ -152,8 +155,69 @@ object ComparingOption {
 
   // Some(1) === None
   (Some(1): Option[Int]) === (None: Option[Int])
+  // the above without the implicits
+  catsSyntaxEq(Some(1): Option[Int])(catsKernelStdOrderForOption).===(None)
+
   Option(1) === Option.empty[Int] // == none
 
   import cats.syntax.option._
   1.some === none[Int] // TODO: try to expand this
+}
+
+// 1.5.4 - Comparing Custom Types
+object CompareDate {
+  import cats.Eq
+  import java.util.Date
+  import cats.instances.long._ // for Eq[Long]
+  import cats.syntax.eq.catsSyntaxEq
+
+  // type class instance
+  implicit val dateEq: Eq[Date] = Eq.instance[Date] { (date1, date2) =>
+    date1.getTime === date2.getTime
+    // same expression without the implicits
+    catsSyntaxEq(date1.getTime)(catsKernelStdOrderForLong).===(date2.getTime)
+  }
+
+  val x = new Date()
+  val y = new Date()
+
+  // both lines are equal
+  x === x
+  catsSyntaxEq(x)(dateEq).===(x)
+}
+
+// 1.5.5 Exercise
+object EqCat {
+  import cats.Eq
+  import cats.instances.string.catsKernelStdOrderForString
+  import cats.instances.int.catsKernelStdOrderForInt
+  import cats.syntax.eq.catsSyntaxEq
+
+  final case class Cat(name: String, age: Int, color: String)
+
+  // Eq[Cat] instance
+  implicit val catEq: Eq[Cat] = Eq.instance[Cat] { (cat1, cat2) =>
+    cat1.name === cat2.name &&
+    cat1.age === cat2.age &&
+    cat1.color === cat2.color
+  }
+
+  val cat1 = Cat("Garfield", 38, "orange and black")
+  val cat2 = Cat("Heathcliff", 33, "orange and black")
+  val optionCat1 = Option(cat1)
+  val optionCat2 = Option.empty[Cat]
+
+  // compare two cats
+  cat1 === cat2
+
+  // compare two Option[Cat]s using
+  import cats.instances.option._
+  import cats.syntax.option._
+
+  optionCat1 =!= optionCat2
+
+  // these two expressions are equivalent
+  cat1.some === optionCat1
+  catsSyntaxEq(catsSyntaxOptionId(cat1).some)(catsKernelStdEqForOption(catEq))
+    .===(optionCat1)
 }
