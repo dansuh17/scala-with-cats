@@ -167,3 +167,81 @@ object ContravariantFunctor {
   // this will fail:
   // format(Box(123))
 }
+
+// 3.6.2 Invariant functors
+object InvariantFunctors {
+  trait Codec[A] { self =>
+    def encode(value: A): String
+    def decode(value: String): A
+
+    // 3.6.2.1 implement imap
+    def imap[B](dec: A => B, enc: B => A): Codec[B] = new Codec[B] {
+      override def encode(value: B): String =
+        self.encode(enc(value)) // function prepended
+      override def decode(value: String): B =
+        dec(self.decode(value)) // function appended
+    }
+  }
+
+  def encode[A](value: A)(implicit c: Codec[A]): String =
+    c.encode(value)
+
+  def decode[A](value: String)(implicit c: Codec[A]): A =
+    c.decode(value)
+
+  implicit val stringCodec: Codec[String] = new Codec[String] {
+    override def encode(value: String): String = value // noop
+    override def decode(value: String): String = value // noop
+  }
+
+  // construct other codecs using stringCodec
+  implicit val intCodec: Codec[Int] =
+    stringCodec.imap(_.toInt, _.toString)
+
+  implicit val booleanCodec: Codec[Boolean] =
+    stringCodec.imap(_.toBoolean, _.toString)
+
+  // implement codec for double
+  implicit val doubleCodec: Codec[Double] =
+    stringCodec.imap(_.toDouble, _.toString)
+
+  val sd1 = encode(2.30)
+  // specify
+  val ds1: Double = decode("999.9")
+
+  // implement codec for box
+  case class Box[A](value: A)
+  implicit def boxCodec[A](implicit codec: Codec[A]): Codec[Box[A]] =
+    codec.imap[Box[A]](Box(_), _.value)
+}
+
+// 3.7
+object ContravariantAndInvariantInCats {
+  import cats.Contravariant
+  import cats.Show
+  import cats.instances.string.{
+    catsStdShowForString,
+    catsKernelStdMonoidForString
+  }
+
+  val showString = Show[String]
+  val showSymbol = Contravariant[Show]
+    .contramap(showString)((sym: Symbol) => s"'${sym.name}")
+
+  showSymbol.show('dave)
+
+  // using interface syntax
+  import cats.syntax.contravariant.toContravariantOps
+  showString.contramap[Symbol](_.name).show('dave)
+
+  // invariant functors usage
+  import cats.Monoid
+  import cats.syntax.invariant.toInvariantOps
+  import cats.syntax.semigroup.catsSyntaxSemigroup
+
+  implicit val symbolMonoid: Monoid[Symbol] =
+    Monoid[String].imap(Symbol.apply)(_.name)
+
+  Monoid[Symbol].empty // '
+  'a |+| 'few |+| 'words // 'afewwords
+}
