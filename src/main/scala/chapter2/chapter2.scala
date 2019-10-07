@@ -90,13 +90,11 @@ object CatsMonoid {
 
 // 2.5.4 Exercise: Adding all the things
 object SuperAdder {
-  // def add(item: List[Int]): Int =
   import cats.Monoid
-  import cats.instances.option.catsKernelStdMonoidForOption
-  import cats.instances.int.catsKernelStdGroupForInt
   import cats.syntax.semigroup.catsSyntaxSemigroup
 
   // def add(item: List[Int]): Int = item.foldLeft(Monoid[Int].empty)(_ |+| _)
+
   def add[A](item: List[A])(implicit m: Monoid[A]): A =
     item.foldLeft(m.empty)(_ |+| _)
 
