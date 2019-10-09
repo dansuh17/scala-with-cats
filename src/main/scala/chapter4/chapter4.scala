@@ -228,3 +228,95 @@ object MonadErrorInstances {
   val exn: Throwable = new RuntimeException("Int's all gone wrong")
   exn.raiseError[Try, Int]
 }
+
+// 4.6
+object EvalMonad {
+  import cats.Eval
+
+  // eval once and memoize
+  val now: Eval[Double] = Eval.now(math.random + 1000)
+
+  // lazy eval
+  val later: Eval[Double] = Eval.later(math.random + 2000)
+
+  // always evaluate every time
+  val always: Eval[Double] = Eval.always(math.random + 3000)
+
+  // accessing
+  now.value
+  later.value
+  always.value
+
+  val greeting = Eval
+    .always { println("Step1"); "Hello" }
+    .map { str =>
+      println("Step2"); s"$str world"
+    }
+
+  greeting.value
+
+  val ans: Eval[Int] = for {
+    a <- Eval.now { println("Calc A"); 40 }
+    b <- Eval.always { println("Calc B"); 2 }
+  } yield {
+    // this 'map' area always called lazily on demand
+    println("Adding A and B")
+    a + b
+  }
+  // Calc A
+
+  ans.value
+  // Calc B
+  // Adding A and B
+
+  ans.value
+  // Adding A and B
+
+  val saying = Eval
+    .always { println("Step 1"); "the cat" }
+    .map { str =>
+      println("Step 2"); s"$str sat on"
+    }
+    .memoize // value will be cached up to this point
+    .map { str =>
+      println("Step 3"); s"$str the mat"
+    }
+}
+
+object Trampolining {
+  // Stack Overflow Example
+  // def factorial(n: BigInt): BigInt =
+  //   if (n == 1) n else n * factorial(n - 1)
+
+  // factorial(50000)
+
+  import cats.Eval
+  def factorial(n: BigInt): Eval[BigInt] =
+    if (n == 1) {
+      Eval.now(n)
+    } else {
+      Eval.defer(factorial(n - 1).map(_ * n))
+    }
+
+  val v = factorial(50000).value
+}
+
+// 4.6.5 Exercise: Safer Folding
+object SaferFolding {
+  import cats.Eval
+
+  def foldRight[A, B](as: List[A], acc: B)(fn: (A, B) => B): B = {
+    def frEval[A, B](as: List[A],
+                     acc: Eval[B])(fn: (A, Eval[B]) => Eval[B]): Eval[B] =
+      as match {
+        case head :: tail =>
+          Eval.defer(fn(head, frEval(tail, acc)(fn)))
+        case Nil =>
+          acc
+      }
+
+    frEval(as, Eval.now(acc)) { (a, b) =>
+      b.map(fn(a, _))
+    }.value
+  }
+}
