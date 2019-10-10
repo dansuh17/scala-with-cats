@@ -320,3 +320,57 @@ object SaferFolding {
     }.value
   }
 }
+
+// 4.7 Writer Monad
+object WriterMonad {
+  import cats.data.Writer
+  import cats.instances.vector.catsKernelStdMonoidForVector
+
+  Writer(Vector("It was the best of times", "it was the worst of times"), 1859)
+
+  // type Writer[W, A] = WriterT[Id, W, A]
+
+  import cats.syntax.applicative._
+  type Logged[A] = Writer[Vector[String], A]
+  // we require the Vector to be an instance of Monoid so that writer knows how to 'append' the log
+  // using the binary operator
+  123.pure[Logged]
+  // catsSyntaxApplicativeId(123).pure[Logged](catsDataMonadForWriterTId(catsKernelStdMonoidForVector))
+
+  import cats.syntax.writer._
+  Vector("msg1", "msg2", "msg3").tell
+  catsSyntaxWriterId(Vector("msg1", "msg2", "msg3")).tell
+
+  val a = Writer(Vector("msg1", "msg2", "msg3"), 123)
+  val b = 123.writer(Vector("msg1", "msg2", "msg3"))
+  val bExplicit = catsSyntaxWriterId(123).writer(Vector("m1", "m2", "m3"))
+
+  val aResult: Int = a.value // result
+  val aLog: Vector[String] = a.written // log
+  val (log, result) = b.run
+
+  val writer1 = for {
+    a <- 10.pure[Logged]
+    _ <- Vector("a", "b", "c").tell
+    b <- 32.writer(Vector("x", "y", "z")) // appends the log as it goes by
+  } yield a + b // adds the results (values)
+
+  // transform only the log using map
+  val writer2 = writer1.mapWritten(_.map(_.toUpperCase)) // A B C X Y Z, 42
+
+  // transform both the log and the result simultaneously
+  val writer3 = writer1.bimap(log => log.map(_.toUpperCase), res => res * 100)
+
+  // accepts a single function with two parameters
+  val writer4 = writer1.mapBoth { (log, res) =>
+    val log2 = log.map(_ + "!")
+    val res2 = res * 1000
+    (log2, res2)
+  }
+
+  // clear the log
+  val writer5 = writer1.reset
+
+  // swap the log and result
+  val writer6 = writer1.swap
+}
