@@ -408,3 +408,201 @@ object ShowYourWorking {
     5.seconds
   )
 }
+
+object ReaderMonad {
+  import cats.data.Reader
+
+  case class Cat(name: String, favoriteFood: String)
+
+  val catName: Reader[Cat, String] = Reader(_.name)
+  catName.run(Cat("Garfield", "lasagne")) // cats.Id[String] = Garfield
+
+  val greetKitty: Reader[Cat, String] = catName.map(name => s"Hello ${name}")
+  val feedKitty: Reader[Cat, String] = Reader(
+    cat => s"Have a nice bowl of ${cat.favoriteFood}"
+  )
+
+  // usinf flatMap to combine readers
+  val greetAndFeed: Reader[Cat, String] =
+    for {
+      greet <- greetKitty
+      feed <- feedKitty
+    } yield s"$greet. $feed."
+}
+
+// 4.8.3 Exercise
+object HackingOnReaders {
+  import cats.data.Reader
+  import cats.syntax.applicative._
+
+  case class Db(usernames: Map[Int, String], passwords: Map[String, String])
+
+  type DbReader[A] = Reader[Db, A]
+
+  def findUsername(userId: Int): DbReader[Option[String]] =
+    Reader(db => db.usernames.get(userId))
+
+  def checkPassword(username: String, password: String): DbReader[Boolean] =
+    Reader(db => db.passwords.get(username).contains(password))
+
+  // compose two readers to render new value
+  def checkLogin(userId: Int, password: String): DbReader[Boolean] =
+    findUsername(userId).flatMap {
+      case None     => false.pure[DbReader]
+      case Some(un) => checkPassword(un, password)
+    }
+  // for {
+  //   userNameOp <- findUsername(userId)
+  //   passwordOk <- userNameOp
+  //     .map { uname =>
+  //       checkPassword(uname, password)
+  //     }
+  //     .getOrElse {
+  //       false.pure[DbReader]
+  //     }
+  // } yield passwordOk
+}
+
+// 4.9 StateMonad
+object StateMonad {
+  import cats.data.State
+  val a = State[Int, String] { state =>
+    (state, s"The state is $state")
+  }
+
+  val (state, result) = a.run(10).value
+  val stateOnly = a.runS(10).value
+  val resultOnly = a.runA(10).value
+
+  val step1 = State[Int, String] { num =>
+    val ans = num + 1
+    (ans, s"Result of step1: $ans")
+  }
+
+  val step2 = State[Int, String] { num =>
+    val ans = num * 2
+    (ans, s"Result of step2: $ans")
+  }
+
+  val both = for {
+    a <- step1
+    b <- step2
+  } yield (a, b)
+
+  val (state2, result2) = both.run(20).value
+  // state2 = 42, result2 = ("Result of step1: 21", "Result of step2: 42")
+}
+
+object StateFunctions {
+  import cats.data.State
+  import cats.data.State._
+
+  val program: State[Int, (Int, Int, Int)] = for {
+    a <- get[Int]
+    _ <- set[Int](a + 1)
+    b <- get[Int]
+    _ <- modify[Int](_ + 1) // modify the state with a function
+    c <- inspect[Int, Int](_ * 1000) // get the state after applying the function
+  } yield (a, b, c)
+}
+
+// 4.9.3 Exercise
+object PostOrderCalculator {
+  // Instructions:
+  // 1 2 + 3 * // see 1, push onto stack
+  // 2 + 3 *   // see 2, push onto stack
+  // + 3 *     // see +, pop 1 and 2 off of stack,
+  //           //        push (1 + 2) = 3 in their place
+  // 3 3 *     // see 3, push onto stack
+  // 3 *       // see 3, push onto stack
+  // *         // see *, pop 3 and 3 off of stack,
+  //           //        push (3 * 3) = 9 in their place
+  import cats.data.State
+  import cats.syntax.applicative._
+
+  type CalcState[A] = State[List[Int], A]
+
+  // parses a single symbol into an instance of State
+  def evalOne(sym: String): CalcState[Int] =
+    if (sym.forall(Character.isDigit)) {
+      // in case a single number...
+      addNum(sym.toInt)
+    } else {
+      sym match {
+        // in case an operator
+        case "+" => evalPlus
+        case "*" => evalMult
+        case "-" => evalMinus
+        case "/" => evalDiv
+        case _   => throw RuntimeException
+      }
+    }
+
+  def addNum(n: Int): CalcState[Int] = State[List[Int], Int] { stack =>
+    (n :: stack, n)
+  }
+
+  def binaryOp(op: (Int, Int) => Int): CalcState[Int] = State[List[Int], Int] {
+    case n1 :: n2 :: rest => {
+      val res = op(n1, n2)
+      (res :: rest, res)
+    }
+    case _ => throw RuntimeException
+  }
+
+  val evalPlus: CalcState[Int] = binaryOp(_ + _)
+  val evalMult: CalcState[Int] = binaryOp(_ * _)
+  val evalMinus: CalcState[Int] = binaryOp(_ - _)
+  val evalDiv: CalcState[Int] = binaryOp(_ / _)
+
+  def evalAll(input: List[String]): CalcState[Int] =
+    input.foldLeft(0.pure[CalcState]) { (state, elem) =>
+      state.flatMap(_ => evalOne(elem))
+    }
+
+  // example of composing results from different programs
+  val program = for {
+    _ <- evalAll(List("1", "2", "+"))
+    _ <- evalAll(List("3", "4", "+"))
+    ans <- evalOne("*")
+  } yield ans
+
+  program.runA(Nil).value
+
+  def evalInput(input: String): Int =
+    evalAll(input.split(" ").toList).runA(Nil).value
+}
+
+// 4.10
+object CustomMonads {
+  import cats.Monad
+  import scala.annotation.tailrec
+  import cats.syntax.monad._
+  import cats.syntax.applicative._
+
+  sealed trait Tree[+A]
+
+  final case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
+
+  final case class Leaf[A](value: A) extends Tree[A]
+
+  def branch[A](left: Tree[A], right: Tree[A]): Tree[A] = Branch(left, right)
+
+  def leaf[A](value: A): Tree[A] = Leaf(value)
+
+  implicit val treeMonad: Monad[Tree] = new Monad[Tree] {
+    override def flatMap[A, B](fa: Tree[A])(f: A => Tree[B]): Tree[B] =
+      fa match {
+        case Branch(left, right) => Branch(flatMap(left)(f), flatMap(right)(f))
+        case Leaf(value)         => f(value)
+      }
+
+    override def tailRecM[A, B](a: A)(f: A => Tree[Either[A, B]]): Tree[B] =
+      flatMap(f(a)) {
+        case Left(v)  => tailRecM(v)(f) // NOT in tailrec position
+        case Right(v) => Leaf(v)
+      }
+
+    override def pure[A](x: A): Tree[A] = Leaf(x)
+  }
+}
