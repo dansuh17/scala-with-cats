@@ -59,3 +59,71 @@ object BuildingMonadStacks {
   val errorStack1 = OptionT[ErrorOr, Int](Right(Some(10)))
   val errorStack2 = 32.pure[ErrorOrOption]
 }
+
+// 5.3.5
+object UsagePatterns {
+  import cats.data.Writer
+
+  type Logged[A] = Writer[List[String], A]
+
+  // method returning untransformed monad stack
+  def parseNumber(str: String): Logged[Option[Int]] =
+    util.Try(str.toInt).toOption match {
+      case Some(num) => Writer(List(s"Read $str"), Some(num))
+      case None      => Writer(List(s"Failed on $str"), None)
+    }
+
+  def addAll(a: String, b: String, c: String): Logged[Option[Int]] = {
+    import cats.data.OptionT
+
+    // use monad transformers for easy composition (and use 'for')
+    val result = for {
+      a <- OptionT(parseNumber(a))
+      b <- OptionT(parseNumber(b))
+      c <- OptionT(parseNumber(c))
+    } yield a + b + c
+
+    result.value
+  }
+
+  // user doesn't see OptionT
+  val result1 = addAll("1", "2", "3") // WriterT((List(Read 1, Read 2, Read 3), Some(6)))
+  val result2 = addAll("1", "a", "3")
+}
+
+// 5.4 Exercise
+object TransformAndRollOut {
+  import scala.concurrent.{Future, Await}
+  import cats.data.EitherT
+  import scala.concurrent.ExecutionContext.Implicits.global
+  import cats.instances.future._
+  import scala.concurrent.duration.DurationInt
+
+  // future of error-prone message of type 'A'
+  // type Response[A] = Future[Either[String, A]] // non-transformed type
+  type Response[A] = EitherT[Future, String, A]
+
+  val powerLevels: Map[String, Int] =
+    Map("Jazz" -> 6, "Bumblebee" -> 8, "Hot Rod" -> 10)
+
+  def getPowerLevel(autobot: String): Response[Int] =
+    powerLevels.get(autobot) match {
+      case Some(powerLevel) => EitherT.right(Future(powerLevel))
+      case None =>
+        EitherT.left(Future(s"$autobot has no power level information"))
+    }
+
+  def canSpecialMove(ally1: String, ally2: String): Response[Boolean] =
+    for {
+      p1 <- getPowerLevel(ally1)
+      p2 <- getPowerLevel(ally2)
+    } yield (p1 + p2) > 15
+
+  def tacticalReport(ally1: String, ally2: String): String =
+    Await.result(canSpecialMove(ally1, ally2).value, 1.second) match {
+      case Left(error) => s"Comms error: $error"
+      case Right(specialMove) =>
+        if (specialMove) s"$ally1 and $ally2 are ready to roll out!"
+        else s"$ally1 and $ally2 need a recharge"
+    }
+}
