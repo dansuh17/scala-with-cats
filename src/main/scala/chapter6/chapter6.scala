@@ -105,3 +105,102 @@ object SemigroupalToDifferentTypes {
 
   product[ErrorOr, Int, Int](Left(Vector("Error 1")), Left(Vector("Error 2")))
 }
+
+// 6.4 Validated
+object V {
+  import cats.Semigroupal
+  import cats.data.Validated
+  import cats.instances.list._
+
+  type AllErrorsOr[A] = Validated[List[String], A]
+
+  val inv: AllErrorsOr[(Nothing, Nothing)] = Semigroupal[AllErrorsOr].product(
+    Validated.invalid(List("Error 1")),
+    Validated.invalid(List("Error 2"))
+  )
+
+  val v: Validated.Valid[Int] = Validated.Valid(123)
+  val i: Validated.Invalid[List[String]] = Validated.Invalid(List("Badness"))
+
+  import cats.syntax.validated._ // interface syntax
+  123.valid[List[String]] // Valid(123)
+
+  List("Badness").invalid[Int] // Invalid(List("Badness"))
+}
+
+// 6.4.2 Combining instances of validated
+object CombiningValidated {
+  import cats.Semigroupal
+  import cats.data.Validated
+  import cats.instances.string._
+  import cats.syntax.apply._
+  import cats.syntax.validated._
+  import cats.instances.vector._
+
+  type AllErrorsOr[A] = Validated[String, A]
+
+  // accumulating errors
+  ("Error1".invalid[Int], "Error2".invalid[Int]).tupled // Invalid("Error1Error2")
+
+  (Vector(404).invalid[Int], Vector(500).invalid[Int]).tupled // Invalid(Vector(404, 500))
+
+  // andThen has same signatures as a monad's flatMap, but does not follow the monad laws
+  32.valid.andThen { a =>
+    10.valid.map { b =>
+      a + b
+    }
+  }
+}
+
+// 6.4.4 Exercise: Form Validation
+object FormValidation {
+  import cats.data.Validated
+  import scala.util.Try
+  import cats.syntax.either._
+  import cats.Semigroupal
+  import cats.syntax.apply._
+
+  case class User(name: String, age: Int)
+
+  type Data = Map[String, String]
+
+  type FailFast[A] = Either[List[String], A]
+
+  def getValue(field: String)(data: Data): FailFast[String] =
+    data.get(field).toRight(List(s"invalid field name $field"))
+
+  def parseInt(s: String): FailFast[Int] =
+    Either
+      .catchOnly[NumberFormatException](s.toInt)
+      .leftMap(_ => List(s"$s is not an integer"))
+
+  def nonBlank(s: String): FailFast[String] =
+    Right(s).ensure(List("string is blank"))(_.nonEmpty)
+
+  def nonNegative(i: Int): FailFast[Int] =
+    Right(i).ensure(List(s"$i is negative"))(_ > 0)
+
+  def readName(data: Data): FailFast[String] =
+    for {
+      v <- getValue("name")(data)
+      k <- nonBlank(v)
+    } yield k
+
+  def readAge(data: Data): FailFast[Int] =
+    for {
+      v <- getValue("age")(data)
+      vNonBlank <- nonBlank(v)
+      vInt <- parseInt(vNonBlank)
+      vNonNeg <- nonNegative(vInt)
+    } yield vNonNeg
+
+  type AllErrorOr[A] = Validated[List[String], A]
+
+  // read the user from user-provided form data
+  def readUser(data: Data): AllErrorOr[User] =
+    (readName(data).toValidated, readAge(formData).toValidated).mapN(User.apply)
+
+  // final usage
+  val formData: Data = Map("name" -> "Dan", "age" -> "28")
+  val user: Validated[List[String], User] = readUser(formData)
+}
