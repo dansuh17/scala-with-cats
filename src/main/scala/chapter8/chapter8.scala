@@ -2,12 +2,10 @@ package chapter8
 
 import scala.language.higherKinds
 import scala.concurrent.Future
-import scala.concurrent.ExecutionContext.Implicits.global
 import cats.{Id, Applicative}
-import cats.instances.future._
-import cats.instances.list._
-import cats.syntax.traverse._
-import cats.syntax.functor._
+import cats.instances.list.catsStdInstancesForList // Traverse instance
+import cats.syntax.traverse.toTraverseOps
+import cats.syntax.functor.toFunctorOps // map
 
 object chapter8
 
@@ -16,29 +14,16 @@ trait UptimeClient[F[_]] {
 }
 
 class UptimeService[F[_]: Applicative](client: UptimeClient[F]) {
+  // List[String] -> F[List[Int]] -> F[Int]
   def getTotalUptime(hostnames: List[String]): F[Int] =
     hostnames.traverse(client.getUptime).map(_.sum)
 }
-
-// hosts: provide dummy host data
-// class TestUptimeClient(hosts: Map[String, Int]) extends TestUptimeClient {
-//   override def getUptime(hostname: String): Int =
-//     Future.successful(hosts.getOrElse(hostname, 0))
-//
-//   def testTotalUptime(): Unit = {
-//     val host = Map("host1" -> 10, "host2" -> 6)
-//     val client = new TestUptimeClient(hosts)
-//     val service = new UptimeService(client)
-//     val actual = service.getTotalUptime(hosts.keys.toList)
-//     val expected = hosts.values.sum
-//     // assert(actual == expected) // !! comparing unrelated types
-//   }
-// }
 
 trait RealUptimeClient extends UptimeClient[Future] {
   override def getUptime(hostname: String): Future[Int]
 }
 
+// Test client that doesn't use Future but instead uses Id
 class TestUptimeClient(hosts: Map[String, Int]) extends UptimeClient[Id] {
   override def getUptime(hostname: String): Int = hosts.getOrElse(hostname, 0)
 
